@@ -229,8 +229,8 @@ class ObliqueIntegrationTest(Test):
         return result
 
 
-    def run_synapse(self,model, dend_loc_num_weight, interval):
-
+    def run_synapse(self, model, dend_loc_num_weight, interval):
+       
         ndend, xloc, loc_type, num, weight = dend_loc_num_weight
 
         if self.base_directory:
@@ -1774,29 +1774,42 @@ class ObliqueIntegrationTest(Test):
                     dend_loc_num_weight.append(e)        #calculates, and adds the synaptic weights needed to a list
             #print dend_loc_num_weight
             interval_sync=0.3 # taking the laser pulse duration (0.2 ms) into account #0.1
-
-            pool = multiprocessing.Pool(self.npool, maxtasksperchild=1)
-            run_synapse_ = functools.partial(self.run_synapse, model, interval=interval_sync)
-            results = pool.map(run_synapse_, dend_loc_num_weight, chunksize=1)
-            #results = result.get()
-
-            pool.terminate()
-            pool.join()
-            del pool
-
-
-            pool1 = multiprocessing.Pool(self.npool, maxtasksperchild=1)
-
+            results = []
+            results_async = []
             interval_async=2.2 # taking the laser pulse duration (0.2 ms) into account #2
+            if self.serialized:
+                for dend_loc_num_weight_ in dend_loc_num_weight:
+                    result = self.run_synapse(model, dend_loc_num_weight_, interval=interval_sync)
+                    results.append(result)
 
-            run_synapse_ = functools.partial(self.run_synapse, model, interval=interval_async)
-            results_async = pool1.map(run_synapse_,dend_loc_num_weight, chunksize=1)    # ordered results
-            #results_async = result_async.get()
+                
+                for dend_loc_num_weight_ in dend_loc_num_weight:
+                    result_async = self.run_synapse(model, dend_loc_num_weight_, interval=interval_async)
+                    results_async.append(result_async)
 
-            pool1.terminate()
-            pool1.join()
-            del pool1
+            else:
+                pool = multiprocessing.Pool(self.npool, maxtasksperchild=1)
+                run_synapse_ = functools.partial(self.run_synapse, model, interval=interval_sync)
+                results = pool.map(run_synapse_, dend_loc_num_weight, chunksize=1)
+                #results = result.get()
 
+                pool.terminate()
+                pool.join()
+                del pool
+
+
+                pool1 = multiprocessing.Pool(self.npool, maxtasksperchild=1)
+
+                
+
+                run_synapse_ = functools.partial(self.run_synapse, model, interval=interval_async)
+                results_async = pool1.map(run_synapse_,dend_loc_num_weight, chunksize=1)    # ordered results
+                #results_async = result_async.get()
+
+                pool1.terminate()
+                pool1.join()
+                del pool1
+                
             plt.close('all') #needed to avoid overlapping of saved images when the test is run on multiple models in a for loop
 
             model_means, model_SDs, model_N, model_prox_N, model_dist_N, EPSPs_sync, sync_peak_derivatives = self.calcs_plots(model, results, dend_loc000, dend_loc_num_weight)
