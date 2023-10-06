@@ -118,8 +118,12 @@ class PathwayInteraction(Test):
                  show_plot=True,
                  save_all = True,
                  AMPA_weight_init = 0.000748,
-                 trunk_origin = None):
-
+                 trunk_origin = None,
+                 serialized = False
+                 ):
+        if num_of_dend_locations is None:
+            num_of_dend_locations = 15
+        self.serialized = serialized
         self.num_of_dend_locations = num_of_dend_locations
         self.random_seed = random_seed
 
@@ -246,14 +250,17 @@ class PathwayInteraction(Test):
             file_name_no_input = path_adjust_syn_weight + 'Traces_no_input.p'
 
             if os.path.isfile(file_name_no_input) is False:
+                if self.serialized:
+                    t_no_input, v_no_input, v_dend_no_input = model.run_synapse_pathway_get_vm(dend_loc[0], 0.0, pathway)
 
-                pool_syn_ = multiprocessing.Pool(1, maxtasksperchild = 1)    # I use multiprocessing to keep every NEURON related task in independent processes
-                t_no_input, v_no_input, v_dend_no_input = pool_syn_.apply(model.run_synapse_pathway_get_vm, args = (dend_loc[0], 0.0, pathway))
-                # plt.plot(t_no_input, v_no_input)
-                # plt.show()
-                pool_syn_.terminate()
-                pool_syn_.join()
-                del pool_syn_
+                else:
+                    pool_syn_ = multiprocessing.Pool(1, maxtasksperchild = 1)    # I use multiprocessing to keep every NEURON related task in independent processes
+                    t_no_input, v_no_input, v_dend_no_input = pool_syn_.apply(model.run_synapse_pathway_get_vm, args = (dend_loc[0], 0.0, pathway))
+                    # plt.plot(t_no_input, v_no_input)
+                    # plt.show()
+                    pool_syn_.terminate()
+                    pool_syn_.join()
+                    del pool_syn_
                 if self.save_all:
                     pickle.dump([t_no_input, v_no_input, v_dend_no_input], gzip.GzipFile(file_name_no_input, "wb"))
 
@@ -261,13 +268,18 @@ class PathwayInteraction(Test):
                 [t_no_input, v_no_input, v_dend_no_input] = pickle.load(gzip.GzipFile(file_name_no_input, "rb"))
 
             
-            synapse_ = functools.partial(self.synapse, model, t_no_input, v_no_input, self.AMPA_weight_init, path_adjust_syn_weight, pathway)
 
-            pool_syn = multiprocessing.Pool(self.npool, maxtasksperchild = 1)    # I use multiprocessing to keep every NEURON related task in independent processes
-            max_soma_depols = pool_syn.map(synapse_, dend_loc, chunksize=1)
-            pool_syn.terminate()
-            pool_syn.join()
-            del pool_syn
+            if self.serialized :
+                max_soma_depols = []
+                for dend_loc0 in dend_loc:
+                    max_soma_depols.append(self.synapse(model, t_no_input, v_no_input, self.AMPA_weight_init, path_adjust_syn_weight, pathway, dend_loc0))
+            else:
+                synapse_ = functools.partial(self.synapse, model, t_no_input, v_no_input, self.AMPA_weight_init, path_adjust_syn_weight, pathway)
+                pool_syn = multiprocessing.Pool(self.npool, maxtasksperchild = 1)    # I use multiprocessing to keep every NEURON related task in independent processes
+                max_soma_depols = pool_syn.map(synapse_, dend_loc, chunksize=1)
+                pool_syn.terminate()
+                pool_syn.join()
+                del pool_syn
 
             #print("before:" , max_soma_depols)
             avg_max_soma_depols = numpy.mean(max_soma_depols)
@@ -275,14 +287,18 @@ class PathwayInteraction(Test):
 
             scale_factor = desired_somatic_depol / avg_max_soma_depols
             #print('scale_factor', scale_factor)
+            if self.serialized:
+                max_soma_depols = []
+                for dend_loc0 in dend_loc:
+                    max_soma_depols.append(self.synapse(model, t_no_input, v_no_input, self.AMPA_weight_init * scale_factor, path_adjust_syn_weight, pathway, dend_loc0))
+            else:
+                synapse_ = functools.partial(self.synapse, model, t_no_input, v_no_input, self.AMPA_weight_init * scale_factor, path_adjust_syn_weight, pathway)
 
-            synapse_ = functools.partial(self.synapse, model, t_no_input, v_no_input, self.AMPA_weight_init * scale_factor, path_adjust_syn_weight, pathway)
-
-            pool_syn = multiprocessing.Pool(self.npool, maxtasksperchild = 1)    # I use multiprocessing to keep every NEURON related task in independent processes
-            max_soma_depols = pool_syn.map(synapse_, dend_loc, chunksize=1)
-            pool_syn.terminate()
-            pool_syn.join()
-            del pool_syn
+                pool_syn = multiprocessing.Pool(self.npool, maxtasksperchild = 1)    # I use multiprocessing to keep every NEURON related task in independent processes
+                max_soma_depols = pool_syn.map(synapse_, dend_loc, chunksize=1)
+                pool_syn.terminate()
+                pool_syn.join()
+                del pool_syn
 
             #print("after:" , max_soma_depols)
             avg_max_soma_depols = numpy.mean(max_soma_depols)
@@ -362,18 +378,23 @@ class PathwayInteraction(Test):
 
                     if prev_max_depol:
                         prev_max_depol = max_depol    # if it already has a value (we are not in the first iteration), it gets the value of the previous iteration 
+                    if self.serialized:
+                        if pathway == 'SC':
+                            traces = model.theta_pathway_stimulus(SC_weight, PP_weight, dend_loc, PP_dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False)
+                        elif pathway == 'PP':
+                            traces = model.theta_pathway_stimulus(SC_weight, PP_weight, SC_dend_loc, dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False)
+                    else:
+                        pool = multiprocessing.Pool(1, maxtasksperchild = 1)   # multiprocessing pool is used so that the model can be killed after the simulation, avoiding pickle errors
+                    
+                        if pathway == 'SC':
+                            traces = pool.apply(self.theta_pathway_stimulus, args = (model, SC_weight, PP_weight, dend_loc, PP_dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False))   # , save_traces=False because we don't want to save all the traces during adjustment
 
-                    pool = multiprocessing.Pool(1, maxtasksperchild = 1)   # multiprocessing pool is used so that the model can be killed after the simulation, avoiding pickle errors
-                
-                    if pathway == 'SC':
-                        traces = pool.apply(self.theta_pathway_stimulus, args = (model, SC_weight, PP_weight, dend_loc, PP_dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False))   # , save_traces=False because we don't want to save all the traces during adjustment
+                        elif pathway == 'PP':
+                            traces = pool.apply(self.theta_pathway_stimulus, args = (model, SC_weight, PP_weight, SC_dend_loc, dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False))
 
-                    elif pathway == 'PP':
-                        traces = pool.apply(self.theta_pathway_stimulus, args = (model, SC_weight, PP_weight, SC_dend_loc, dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False))
-
-                    pool.terminate()
-                    pool.join()
-                    del pool
+                        pool.terminate()
+                        pool.join()
+                        del pool
 
 
                     max_depol = self.analyse_syn_traces(model, traces[pathway]['t'], traces[pathway]['v_dend'], t_no_input_rec_dend, v_no_input_rec_dend)
@@ -528,12 +549,14 @@ class PathwayInteraction(Test):
         file_name = path_adjust_current_amplitude + 'dend_trace_' + str(amplitude) + '_nA.p'
 
         if os.path.isfile(file_name) is False:
-
-            pool = multiprocessing.Pool(1, maxtasksperchild = 1)   # multiprocessing pool is used so that the model can be killed after the simulation, avoiding pickle errors
-            t, v = pool.apply(model.get_vm, args = (amplitude, delay, duration, stim_section_name, stim_location_x, rec_section_name, rec_location_x))
-            pool.terminate()
-            pool.join()
-            del pool
+            if self.serialized:
+                t, v = model.get_vm(amplitude, delay, duration, stim_section_name, stim_location_x, rec_section_name, rec_location_x)
+            else:
+                pool = multiprocessing.Pool(1, maxtasksperchild = 1)   # multiprocessing pool is used so that the model can be killed after the simulation, avoiding pickle errors
+                t, v = pool.apply(model.get_vm, args = (amplitude, delay, duration, stim_section_name, stim_location_x, rec_section_name, rec_location_x))
+                pool.terminate()
+                pool.join()
+                del pool
         
             if self.save_all:
                 pickle.dump([t, v], gzip.GzipFile(file_name, "wb"))
@@ -1306,7 +1329,8 @@ class PathwayInteraction(Test):
                 exp_ISI_stds.append(observation[pathway]['somatic AP ISI']['std'])
 
                 labels_ISI.append(pathway + ' - ' + 'somatic AP ISI')
-                
+
+      
         model_all_plateau_duration_means = model_plateau_duration_means + model_1st_plateau_duration_means + model_3_5th_plateau_duration_means
         model_all_plateau_duration_stds = model_plateau_duration_stds + model_1st_plateau_duration_stds + model_3_5th_plateau_duration_stds
         exp_all_plateau_duration_means = exp_plateau_duration_means + exp_1st_plateau_duration_means + exp_3_5th_plateau_duration_means
@@ -1447,12 +1471,15 @@ class PathwayInteraction(Test):
         PP_weight = self.adjust_syn_weight(model, PP_dend_loc, pathway = 'PP') #0.000748
         print('PP AMPA weight', PP_weight)
         self.message_to_logFile += "PP AMPA weight: " + str(PP_weight) + "\n"
+        if self.serialized:
+            t_no_input_rec_dend, v_soma_no_input, v_no_input_rec_dend = self.generate_no_input_traces(model, recording_loc)
         
-        pool = multiprocessing.Pool(1, maxtasksperchild = 1)
-        t_no_input_rec_dend, v_soma_no_input, v_no_input_rec_dend  = pool.apply(self.generate_no_input_traces, (model, recording_loc,)) # this is run in multiprocessing pool so that the model can be completely killed after done 
-        pool.terminate()
-        pool.join()
-        del pool
+        else:
+            pool = multiprocessing.Pool(1, maxtasksperchild = 1)
+            t_no_input_rec_dend, v_soma_no_input, v_no_input_rec_dend  = pool.apply(self.generate_no_input_traces, (model, recording_loc,)) # this is run in multiprocessing pool so that the model can be completely killed after done 
+            pool.terminate()
+            pool.join()
+            del pool
 
         interval_bw_trains = 1/ self.config["frequency of stimulus sequence"] * 1000
         interval_bw_stimuli_in_train = 1/ self.config["frequency of trains"] * 1000
@@ -1463,14 +1490,20 @@ class PathwayInteraction(Test):
         stimuli_params =[interval_bw_trains, interval_bw_stimuli_in_train, num_trains, num_stimuli_in_train] 
 
         # self.adjust_num_syn(model, SC_weight, PP_weight, recording_loc, stimuli_params, t_no_input_rec_dend, v_no_input_rec_dend, 'SC')
-       
-        pool = NonDaemonPool(self.npool, maxtasksperchild=1)  # NoDeamonPool is needed because Random locations are needed to be chosen several times, for which the model is loaded in a multiprocessing pool 
-        adjust_num_syn_= functools.partial(self.adjust_num_syn, model, SC_weight, PP_weight, recording_loc, stimuli_params, t_no_input_rec_dend, v_no_input_rec_dend)
-        dend_locs = pool.map(adjust_num_syn_, ['SC', 'PP'], chunksize=1)
 
-        pool.terminate()
-        pool.join()
-        del pool
+
+        if self.serialized:
+            dend_locs_SC = self.adjust_num_syn( model, SC_weight, PP_weight, recording_loc, stimuli_params, t_no_input_rec_dend, v_no_input_rec_dend, pathway='SC')
+            dend_locs_PP = self.adjust_num_syn( model, SC_weight, PP_weight, recording_loc, stimuli_params, t_no_input_rec_dend, v_no_input_rec_dend, pathway= 'PP')
+            dend_locs = [dend_locs_SC, dend_locs_PP]
+        else:
+            pool = NonDaemonPool(self.npool, maxtasksperchild=1)  # NoDeamonPool is needed because Random locations are needed to be chosen several times, for which the model is loaded in a multiprocessing pool 
+            adjust_num_syn_= functools.partial(self.adjust_num_syn, model, SC_weight, PP_weight, recording_loc, stimuli_params, t_no_input_rec_dend, v_no_input_rec_dend)
+            dend_locs = pool.map(adjust_num_syn_,  ['SC', 'PP'], chunksize=1)
+
+            pool.terminate()
+            pool.join()
+            del pool
 
         dend_locs_dict = {} 
         for locs in dend_locs:
@@ -1488,14 +1521,19 @@ class PathwayInteraction(Test):
         self.message_to_logFile += "PP dencd_loc: " + str(PP_dend_loc) + "\n"
 
         tstop = 1600
+        
+        if self.serialized:
+            traces = []
+            for pathway in ['SC', 'PP', 'SC+PP', 'depol', 'SC+depol', 'PP+depol']:
+                traces.append(self.theta_pathway_stimulus(model, SC_weight, PP_weight, SC_dend_loc, PP_dend_loc, recording_loc, stimuli_params, tstop, current_amp, save_traces=True, pathway=pathway))
+        else:
+            pool = multiprocessing.Pool(self.npool, maxtasksperchild=1)
+            theta_pathway_stimulus_= functools.partial(self.theta_pathway_stimulus, model, SC_weight, PP_weight, SC_dend_loc, PP_dend_loc, recording_loc, stimuli_params, tstop, current_amp, save_traces=True)  # save_traces=True because we want to save traces into pickle files for later use
+            traces = pool.map(theta_pathway_stimulus_, ['SC', 'PP', 'SC+PP', 'depol', 'SC+depol', 'PP+depol'], chunksize=1)
 
-        pool = multiprocessing.Pool(self.npool, maxtasksperchild=1)
-        theta_pathway_stimulus_= functools.partial(self.theta_pathway_stimulus, model, SC_weight, PP_weight, SC_dend_loc, PP_dend_loc, recording_loc, stimuli_params, tstop, current_amp, save_traces=True)  # save_traces=True because we want to save traces into pickle files for later use
-        traces = pool.map(theta_pathway_stimulus_, ['SC', 'PP', 'SC+PP', 'depol', 'SC+depol', 'PP+depol'], chunksize=1)
-
-        pool.terminate()
-        pool.join()
-        del pool
+            pool.terminate()
+            pool.join()
+            del pool
 
         traces_dict = {} 
         for trace in traces:
