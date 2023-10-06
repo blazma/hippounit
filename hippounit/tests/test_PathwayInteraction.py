@@ -1337,6 +1337,40 @@ class PathwayInteraction(Test):
         exp_all_plateau_duration_stds = exp_plateau_duration_stds + exp_1st_plateau_duration_stds + exp_3_5th_plateau_duration_stds
         labels_all_plateau_duration = labels_plateau_duration + labels_1st_plateau_duration + labels_3_5th_plateau_duration
         
+        
+        # Convert feature values to numpy arrays, to avoid problems with nan values multiplying with units, and to be able to plot them
+
+        model_num_AP_means = numpy.array(model_num_AP_means)
+        model_num_AP_stds = numpy.array(model_num_AP_stds)
+        exp_num_AP_means = numpy.array(exp_num_AP_means)
+        exp_num_AP_stds = numpy.array(exp_num_AP_stds)
+
+        model_ISI_means = numpy.array(model_ISI_means)
+        model_ISI_stds = numpy.array(model_ISI_stds)
+        exp_ISI_means = numpy.array(exp_ISI_means)
+        exp_ISI_stds = numpy.array(exp_ISI_stds)
+
+
+        model_plateau_amplitude_means = numpy.array(model_plateau_amplitude_means)
+        model_plateau_amplitude_stds = numpy.array(model_plateau_amplitude_stds)
+        exp_plateau_amplitude_means = numpy.array(exp_plateau_amplitude_means)
+        exp_plateau_amplitude_stds = numpy.array(exp_plateau_amplitude_stds)
+
+        model_all_plateau_duration_means = numpy.array(model_all_plateau_duration_means)
+        model_all_plateau_duration_stds = numpy.array(model_all_plateau_duration_stds)
+        exp_all_plateau_duration_means = numpy.array(exp_all_plateau_duration_means)
+        exp_all_plateau_duration_stds = numpy.array(exp_all_plateau_duration_stds)
+
+        model_bAP_amp_means = numpy.array(model_bAP_amp_means)
+        model_bAP_amp_stds = numpy.array(model_bAP_amp_stds)
+        exp_bAP_amp_means = numpy.array(exp_bAP_amp_means)
+        exp_bAP_amp_stds = numpy.array(exp_bAP_amp_stds)
+
+
+
+
+
+
         fig, axs = plt.subplots(3,2, figsize=(2*4, 2*4))
         plt.subplots_adjust(wspace = 0.5, hspace = 0.8)
 
