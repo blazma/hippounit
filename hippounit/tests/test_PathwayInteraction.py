@@ -79,6 +79,33 @@ def _unpickle_method(func_name, obj, cls):
     return func.__get__(obj, cls)
 
 
+
+def get_random_locations_wrapper(model, num_of_dend_locations, random_seed, dist_range, trunk_origin, serialized=True):
+    """
+    Wraps the `get_random_locations` or `get_random_locations_multiproc` method of the given `model` object to provide options for serial or parallel execution
+    to generate random dendritic locations and their distances from the `trunk_origin` 
+    """
+    if serialized :
+        dend_loc, locations_distances = model.get_random_locations(num_of_dend_locations, random_seed, dist_range, trunk_origin)
+    else:
+        dend_loc, locations_distances = model.get_random_locations_multiproc(num_of_dend_locations, random_seed, dist_range, trunk_origin)
+    return dend_loc, locations_distances
+
+
+def find_trunk_locations_wrapper(model, distances, tolerance, trunk_origin, serialized = True):
+    """
+    Wraps the `find_trunk_locations` or `find_trunk_locations_multiproc` method of the given `model` object to provide options for serial or parallel execution
+    to find the locations on the trunk section of the given `model` object that are closest to the given `distances` from the `trunk_origin`
+    """
+
+    if serialized:
+        trunk_locations, trunk_distances = model.find_trunk_locations(distances, tolerance, trunk_origin)
+    else:
+        trunk_locations, trunk_distances = model.find_trunk_locations_multiproc(distances, tolerance, trunk_origin)
+    
+    return trunk_locations, trunk_distances
+
+
 class NonDaemonPool(multiprocessing.pool.Pool):
     def Process(self, *args, **kwds):
         proc = super(NonDaemonPool, self).Process(*args, **kwds)
@@ -223,7 +250,6 @@ class PathwayInteraction(Test):
         return max_soma_depol 
 
     def adjust_syn_weight(self, model, dend_loc, pathway):
-
         if self.base_directory:
             path_adjust_syn_weight = self.base_directory + 'temp_data/' + 'pathway_interaction/' + model.name + '/adjust_syn_weight/'
         else:
@@ -252,7 +278,6 @@ class PathwayInteraction(Test):
             if os.path.isfile(file_name_no_input) is False:
                 if self.serialized:
                     t_no_input, v_no_input, v_dend_no_input = model.run_synapse_pathway_get_vm(dend_loc[0], 0.0, pathway)
-
                 else:
                     pool_syn_ = multiprocessing.Pool(1, maxtasksperchild = 1)    # I use multiprocessing to keep every NEURON related task in independent processes
                     t_no_input, v_no_input, v_dend_no_input = pool_syn_.apply(model.run_synapse_pathway_get_vm, args = (dend_loc[0], 0.0, pathway))
@@ -299,7 +324,6 @@ class PathwayInteraction(Test):
                 pool_syn.terminate()
                 pool_syn.join()
                 del pool_syn
-
             #print("after:" , max_soma_depols)
             avg_max_soma_depols = numpy.mean(max_soma_depols)
             #print('avg after', avg_max_soma_depols)
@@ -336,9 +360,9 @@ class PathwayInteraction(Test):
             if pathway == 'SC':
 
                 model.SecList_name = model.ObliqueSecList_name
-                dend_loc, locations_distances = model.get_random_locations_multiproc(10, self.random_seed, dist_range, self.trunk_origin) # number of random locations , seed
+                dend_loc, locations_distances = get_random_locations_wrapper(model,10, self.random_seed, dist_range, self.trunk_origin,serialized = self.serialized) # number of random locations , seed
                 PP_dend_loc =[] 
-                num_of_loc = model.get_num_of_possible_locations()
+                num_of_loc = model.get_num_of_possible_locations(serialized=self.serialized)
                 
                 exp_depol = 16.0
                 exp_depol_sd = 1.6
@@ -348,10 +372,9 @@ class PathwayInteraction(Test):
 
             elif pathway == 'PP':
                 model.SecList_name = model.TuftSecList_name
-                dend_loc, locations_distances = model.get_random_locations_multiproc(10, self.random_seed, dist_range, self.trunk_origin) # number of random locations , seed
-                
+                dend_loc, locations_distances = get_random_locations_wrapper(model,10, self.random_seed, dist_range, self.trunk_origin, serialized = self.serialized) # number of random locations , seed
                 SC_dend_loc =[] 
-                num_of_loc = model.get_num_of_possible_locations()
+                num_of_loc = model.get_num_of_possible_locations(serialized=self.serialized)
 
                 exp_depol = 10.2
                 exp_depol_sd = 1.0
@@ -380,9 +403,9 @@ class PathwayInteraction(Test):
                         prev_max_depol = max_depol    # if it already has a value (we are not in the first iteration), it gets the value of the previous iteration 
                     if self.serialized:
                         if pathway == 'SC':
-                            traces = model.theta_pathway_stimulus(SC_weight, PP_weight, dend_loc, PP_dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False)
+                            traces = self.theta_pathway_stimulus(model, SC_weight, PP_weight, dend_loc, PP_dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False)
                         elif pathway == 'PP':
-                            traces = model.theta_pathway_stimulus(SC_weight, PP_weight, SC_dend_loc, dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False)
+                            traces = self.theta_pathway_stimulus(model, SC_weight, PP_weight, SC_dend_loc, dend_loc, recording_loc, new_stimuli_params, 1600, 0, pathway, False)
                     else:
                         pool = multiprocessing.Pool(1, maxtasksperchild = 1)   # multiprocessing pool is used so that the model can be killed after the simulation, avoiding pickle errors
                     
@@ -413,11 +436,11 @@ class PathwayInteraction(Test):
                         
                         prev_dend_loc = list(dend_loc)
              
-                        dend_loc_, locations_distances_ = model.get_random_locations_multiproc(1, random_seed, dist_range, self.trunk_origin) # select one more location
+                        dend_loc_, locations_distances_ = get_random_locations_wrapper(model, 1, random_seed, dist_range, self.trunk_origin, serialized = self.serialized)  # select one more location
 
-                        while dend_loc_[0] in dend_loc and len(dend_loc) <= num_of_loc: 
+                        while dend_loc_[0] in dend_loc and len(dend_loc) <= num_of_loc:
                             random_seed += 1
-                            dend_loc_, locations_distances_ = model.get_random_locations_multiproc(1, random_seed, dist_range, self.trunk_origin) # select one more location
+                            dend_loc_ , locations_distances = get_random_locations_wrapper(model,1, random_seed, dist_range, self.trunk_origin, serialized = self.serialized) # number of random locations , seed
                         dend_loc.append(dend_loc_[0]) 
                         #print(pathway, ': ', dend_loc)
 
@@ -489,7 +512,6 @@ class PathwayInteraction(Test):
 
 
     def generate_no_input_traces(self, model, recording_loc):
-
 
         if self.base_directory:
             path = self.base_directory + 'temp_data/' + 'pathway_interaction/' + model.name + '/'
@@ -660,7 +682,7 @@ class PathwayInteraction(Test):
 
             if spike_count_no_input > 0:
                 print("Cell fires spontaneously")
-                current_amp_final = floeat('nan')
+                current_amp_final = float('nan')
 
             else:
 
@@ -1330,14 +1352,17 @@ class PathwayInteraction(Test):
 
                 labels_ISI.append(pathway + ' - ' + 'somatic AP ISI')
 
-      
+        
+
+
+
         model_all_plateau_duration_means = model_plateau_duration_means + model_1st_plateau_duration_means + model_3_5th_plateau_duration_means
         model_all_plateau_duration_stds = model_plateau_duration_stds + model_1st_plateau_duration_stds + model_3_5th_plateau_duration_stds
         exp_all_plateau_duration_means = exp_plateau_duration_means + exp_1st_plateau_duration_means + exp_3_5th_plateau_duration_means
         exp_all_plateau_duration_stds = exp_plateau_duration_stds + exp_1st_plateau_duration_stds + exp_3_5th_plateau_duration_stds
         labels_all_plateau_duration = labels_plateau_duration + labels_1st_plateau_duration + labels_3_5th_plateau_duration
         
-        
+
         # Convert feature values to numpy arrays, to avoid problems with nan values multiplying with units, and to be able to plot them
 
         model_num_AP_means = numpy.array(model_num_AP_means)
@@ -1365,8 +1390,6 @@ class PathwayInteraction(Test):
         model_bAP_amp_stds = numpy.array(model_bAP_amp_stds)
         exp_bAP_amp_means = numpy.array(exp_bAP_amp_means)
         exp_bAP_amp_stds = numpy.array(exp_bAP_amp_stds)
-
-
 
 
 
@@ -1466,20 +1489,22 @@ class PathwayInteraction(Test):
             if e.errno != 17:
                 raise
             pass
-
+        
         dist_range = [0,9999999999]
-
         model.SecList_name = model.ObliqueSecList_name
-        SC_dend_loc, SC_locations_distances = model.get_random_locations_multiproc(self.num_of_dend_locations, self.random_seed, dist_range, self.trunk_origin) # number of random locations , seed
-
+        SC_dend_loc, SC_locations_distances = get_random_locations_wrapper(model, self.num_of_dend_locations, self.random_seed, dist_range, self.trunk_origin, serialized = self.serialized) # number of random locations , seed
+        
         model.SecList_name = model.TuftSecList_name
-        PP_dend_loc, PP_locations_distances = model.get_random_locations_multiproc(self.num_of_dend_locations, self.random_seed, dist_range, self.trunk_origin) # number of random locations , seed
+
+        PP_dend_loc, PP_locations_distances = get_random_locations_wrapper(model, self.num_of_dend_locations, self.random_seed, dist_range, self.trunk_origin,serialized = self.serialized) # number of random locations , seed
 
         """Finding recording location on Trunk whose distance is closest to 300 um"""
         distances = [self.config["distance of recording location"]]
         tolerance = self.config["distance tolerance"]
 
-        rec_locs, rec_locs_actual_distances = model.find_trunk_locations_multiproc(distances, tolerance, self.trunk_origin)
+        # rec_locs, rec_locs_actual_distances = model.find_trunk_locations_multiproc(distances, tolerance, self.trunk_origin) #use the wrapper instead
+        rec_locs, rec_locs_actual_distances = find_trunk_locations_wrapper(model, distances, tolerance, self.trunk_origin, serialized = self.serialized)
+
         #print("recording locs", rec_locs, rec_locs_actual_distances)
 
         # recording_loc = min(rec_locs_actual_distances, key=abs(distances[0] - rec_locs_actual_distances.get))
