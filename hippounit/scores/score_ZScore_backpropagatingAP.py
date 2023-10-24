@@ -6,7 +6,13 @@ from sciunit import Score
 import numpy
 from sciunit.utils import assert_dimensionless
 import collections
-
+from sciunit.errors import (
+    CapabilityError,
+    Error,
+    InvalidScoreError,
+    ObservationError,
+    ParametersError,
+)
 class ZScore_backpropagatingAP(Score):
     """
     Average of Z scores. A float indicating the average of standardized difference
@@ -20,14 +26,15 @@ class ZScore_backpropagatingAP(Score):
         else:
             super(ZScore_backpropagatingAP,self).__init__(score, related_data=related_data)
 
+    never_fired_penalty = 250.0
     @classmethod
     def compute(cls, observation, prediction, distances):
         """Computes average of z-scores from observation and prediction for back-propagating AP amplitudes"""
 
         errors = collections.OrderedDict()
         if not prediction:
-            never_fired_penalty = 250
-            return [never_fired_penalty, never_fired_penalty], errors
+            
+            return [ZScore_backpropagatingAP.never_fired_penalty, ZScore_backpropagatingAP.never_fired_penalty], errors
 
         for i in range (0, len(distances)):
             if 'mean_AP1_amp_strong_propagating_at_'+str(distances[i])+'um' in list(observation.keys()) or 'mean_AP1_amp_weak_propagating_at_'+str(distances[i])+'um' in list(observation.keys()):
@@ -102,13 +109,15 @@ class ZScore_backpropagatingAP(Score):
         return [score_avg_strong_propagating, score_avg_weak_propagating], errors
 
     def __str__(self):
-
-        if ZScore_backpropagatingAP.strong:
-            return 'Z_score_avg_STRONG_propagating = %.2f' % self.score
-        elif ZScore_backpropagatingAP.strong is False:
-            return 'Z_score_avg_WEAK_propagating = %.2f' % self.score
-        elif ZScore_backpropagatingAP.strong is None:
-            return 'Z_score_avg = %.2f' % self.score
+        try:
+            if ZScore_backpropagatingAP.strong:
+                return 'Z_score_avg_STRONG_propagating = %.2f' % self.score
+            elif ZScore_backpropagatingAP.strong is False:
+                return 'Z_score_avg_WEAK_propagating = %.2f' % self.score
+            elif ZScore_backpropagatingAP.strong is None:
+                return 'Z_score_avg = %.2f' % self.score
+        except: #for ZScore_backpropagatingAP does not have attribute strong
+            return f'Z_score_avg = {self.score}'
 
         '''
         if self.score_l[0] < self.score_l[1]:
