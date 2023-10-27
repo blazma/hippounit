@@ -177,7 +177,6 @@ class BackpropagatingAPTest(Test):
                 units = " ".join(quantity_parts[1:])
                 observation[key] = Quantity(number, units)
         return observation
-
     def spikecount(self, delay, duration, soma_trace):
 
         trace = {}
@@ -592,6 +591,10 @@ class BackpropagatingAPTest(Test):
 
 
     def plot_features(self, model, features, actual_distances):
+        if self.base_directory:
+            self.path_results = self.base_directory + 'results/' + 'backpropagating_AP/' + model.name + '/'
+        else:
+            self.path_results = model.base_directory + 'results/' + 'backpropagating_AP/'
 
         observation = self.observation
 
@@ -655,7 +658,7 @@ class BackpropagatingAPTest(Test):
 
     def plot_results(self, observation, prediction, errors, model_name_bAP):
 
-
+       
         # Mean absolute feature values plot
         distances = numpy.array(self.config['recording']['distances'])
 
@@ -671,10 +674,12 @@ class BackpropagatingAPTest(Test):
         exp_std_APlast_amps = numpy.array([])
 
         for i in range(len(distances)):
-            model_mean_AP1_amps = numpy.append(model_mean_AP1_amps, prediction['model_AP1_amp_at_'+str(distances[i])+'um']['mean'])
-            model_mean_APlast_amps = numpy.append(model_mean_APlast_amps, prediction['model_APlast_amp_at_'+str(distances[i])+'um']['mean'])
-            model_std_AP1_amps = numpy.append(model_std_AP1_amps, prediction['model_AP1_amp_at_'+str(distances[i])+'um']['std'])
-            model_std_APlast_amps = numpy.append(model_std_APlast_amps, prediction['model_APlast_amp_at_'+str(distances[i])+'um']['std'])
+            #if prediction is not empty dictionary
+            if prediction:
+                model_mean_AP1_amps = numpy.append(model_mean_AP1_amps, prediction['model_AP1_amp_at_'+str(distances[i])+'um']['mean'])
+                model_mean_APlast_amps = numpy.append(model_mean_APlast_amps, prediction['model_APlast_amp_at_'+str(distances[i])+'um']['mean'])
+                model_std_AP1_amps = numpy.append(model_std_AP1_amps, prediction['model_AP1_amp_at_'+str(distances[i])+'um']['std'])
+                model_std_APlast_amps = numpy.append(model_std_APlast_amps, prediction['model_APlast_amp_at_'+str(distances[i])+'um']['std'])
 
             if 'mean_AP1_amp_strong_propagating_at_'+str(distances[i])+'um' in list(observation.keys()) or 'mean_AP1_amp_weak_propagating_at_'+str(distances[i])+'um' in list(observation.keys()):
                 exp_mean_AP1_amps_StrongProp = numpy.append(exp_mean_AP1_amps_StrongProp, observation['mean_AP1_amp_strong_propagating_at_'+str(distances[i])+'um'])
@@ -693,7 +698,8 @@ class BackpropagatingAPTest(Test):
             exp_std_APlast_amps = numpy.append(exp_std_APlast_amps, observation['std_APlast_amp_at_'+str(distances[i])+'um'])
 
         plt.figure()
-        plt.errorbar(distances, model_mean_AP1_amps, yerr = model_std_AP1_amps, marker ='o', linestyle='none', label = model_name_bAP)
+        if prediction:
+            plt.errorbar(distances, model_mean_AP1_amps, yerr = model_std_AP1_amps, marker ='o', linestyle='none', label = model_name_bAP)
         plt.errorbar(distances, exp_mean_AP1_amps_WeakProp, yerr = exp_std_AP1_amps_WeakProp, marker='o', linestyle='none', label = 'experiment - Weak propagating')
         plt.errorbar(distances, exp_mean_AP1_amps_StrongProp, yerr = exp_std_AP1_amps_StrongProp, marker='o', linestyle='none', label = 'experiment - Strong propagating')
         plt.xlabel('Distance from soma (um)')
@@ -703,7 +709,8 @@ class BackpropagatingAPTest(Test):
             plt.savefig(self.path_figs + 'AP1_amp_means'+ '.pdf', dpi=600, bbox_extra_artists=(lgd,), bbox_inches='tight')
 
         plt.figure()
-        plt.errorbar(distances, model_mean_APlast_amps, yerr = model_std_APlast_amps, marker ='o', linestyle='none', label = model_name_bAP)
+        if prediction:
+            plt.errorbar(distances, model_mean_APlast_amps, yerr = model_std_APlast_amps, marker ='o', linestyle='none', label = model_name_bAP)
         plt.errorbar(distances, exp_mean_APlast_amps, yerr = exp_std_APlast_amps, marker='o', linestyle='none', label = 'experiment')
         plt.xlabel('Distance from soma (um)')
         plt.ylabel('APlast_amp (mV)')
@@ -758,6 +765,23 @@ class BackpropagatingAPTest(Test):
             if e.errno != 17:
                 raise
             pass
+        
+
+        if self.base_directory:
+            self.path_figs = self.base_directory + 'figs/' + 'backpropagating_AP/' + model.name + '/'
+        else:
+            self.path_figs = model.base_directory + 'figs/' + 'backpropagating_AP/'
+
+
+        try:
+            if not os.path.exists(self.path_figs) and self.save_all:
+                os.makedirs(self.path_figs)
+        except OSError as e:
+            if e.errno != 17:
+                raise
+            pass
+
+        
 
 
         global model_name_bAP
@@ -779,13 +803,20 @@ class BackpropagatingAPTest(Test):
         duration = self.config['stimulus']['duration']
         #amplitude = self.config['stimulus']['amplitude']
 
+       
+
         prediction = collections.OrderedDict()
 
         #plt.close('all') #needed to avoid overlapping of saved images when the test is run on multiple models in a for loop
         plt.close('all') #needed to avoid overlapping of saved images when the test is run on multiple models
 
         amplitude, message_to_logFile = self.find_current_amp(model, delay, duration, "soma", 0.5, "soma", 0.5)
+        
+        filepath = self.path_results + self.test_log_filename
+
+
         if amplitude is None:
+            self.logFile = open(filepath, 'w') #open logfile before returning because subsequent steps assumes it is already open 
             return prediction
 
         if self.serialized:
@@ -794,8 +825,12 @@ class BackpropagatingAPTest(Test):
             pool = multiprocessing.Pool(1, maxtasksperchild = 1)
             traces = pool.apply(self.cclamp, args = (model, amplitude, delay, duration, "soma", 0.5, dend_locations))
 
-        filepath = self.path_results + self.test_log_filename
-        self.logFile = open(filepath, 'w') # if it is opened before multiprocessing, the multiporeccing won't work under python3
+        if self.logFile is None:
+            self.logFile = open(filepath, 'w') #if not opened means that the amplitude wasn't None so, open it now
+
+
+        # filepath = self.path_results + self.test_log_filename
+        # self.logFile = open(filepath, 'w') # if it is opened before multiprocessing, the multiporeccing won't work under python3
 
         self.logFile.write('Dendritic locations to be tested (with their actual distances):\n'+ str(actual_distances)+'\n')
         self.logFile.write("---------------------------------------------------------------------------------------------------\n")
@@ -892,26 +927,53 @@ class BackpropagatingAPTest(Test):
         if self.show_plot:
             plt.show()
 
-        if scores.ZScore_backpropagatingAP.strong:#score_avg[0] < score_avg[1]:
-            best_score = score_avg[0]
-            print('This is a rather STRONG propagating model')
+        # if scores.ZScore_backpropagatingAP.strong:#score_avg[0] < score_avg[1]:
+        #     best_score = score_avg[0]
+        #     print('This is a rather STRONG propagating model')
 
 
-            self.logFile.write('This is a rather STRONG propagating model\n')
-            self.logFile.write("---------------------------------------------------------------------------------------------------\n")
+        #     self.logFile.write('This is a rather STRONG propagating model\n')
+        #     self.logFile.write("---------------------------------------------------------------------------------------------------\n")
 
-            score_json= {'Z_score_avg_STRONG_propagating' : best_score}
-        elif scores.ZScore_backpropagatingAP.strong is False:#score_avg[1] < score_avg[0]:
-            best_score = score_avg[1]
-            print('This is a rather WEAK propagating model')
+        #     score_json= {'Z_score_avg_STRONG_propagating' : best_score}
+        # elif scores.ZScore_backpropagatingAP.strong is False:#score_avg[1] < score_avg[0]:
+        #     best_score = score_avg[1]
+        #     print('This is a rather WEAK propagating model')
 
-            self.logFile.write('This is a rather WEAK propagating model\n')
-            self.logFile.write("---------------------------------------------------------------------------------------------------\n")
+        #     self.logFile.write('This is a rather WEAK propagating model\n')
+        #     self.logFile.write("---------------------------------------------------------------------------------------------------\n")
 
-            score_json= {'Z_score_avg_Weak_propagating' : best_score}
-        elif scores.ZScore_backpropagatingAP.strong is None:#score_avg[1] == score_avg[0]:
-            best_score = score_avg[0]
+        #     score_json= {'Z_score_avg_Weak_propagating' : best_score}
+        # elif scores.ZScore_backpropagatingAP.strong is None:#score_avg[1] == score_avg[0]:
+        #     best_score = score_avg[0]
+        #     score_json= {'Z_score_avg' : best_score}
+
+        try:
+            if score_avg[0] < score_avg[1]:
+                best_score = score_avg[0]
+                print('This is a rather STRONG propagating model')
+
+
+                self.logFile.write('This is a rather STRONG propagating model\n')
+                self.logFile.write("---------------------------------------------------------------------------------------------------\n")
+                score_json= {'Z_score_avg_STRONG_propagating' : best_score}
+                
+            elif score_avg[1] < score_avg[0]:
+                best_score = score_avg[1]
+                print('This is a rather WEAK propagating model')
+
+                self.logFile.write('This is a rather WEAK propagating model\n')
+                self.logFile.write("---------------------------------------------------------------------------------------------------\n")
+
+                score_json= {'Z_score_avg_Weak_propagating' : best_score}
+            elif score_avg[1] == score_avg[0]:
+                best_score = score_avg[0]
+                score_json= {'Z_score_avg' : best_score}
+        
+        except:
+            best_score =  None
             score_json= {'Z_score_avg' : best_score}
+
 
 
         file_name_score = self.path_results + 'bAP_final_score.json'
