@@ -811,10 +811,12 @@ class BackpropagatingAPTest(Test):
         plt.close('all') #needed to avoid overlapping of saved images when the test is run on multiple models
 
         amplitude, message_to_logFile = self.find_current_amp(model, delay, duration, "soma", 0.5, "soma", 0.5)
+        
         filepath = self.path_results + self.test_log_filename
-        self.logFile = open(filepath, 'w') # if it is opened before multiprocessing, the multiporeccing won't work under python3
+
 
         if amplitude is None:
+            self.logFile = open(filepath, 'w') #open logfile before returning because subsequent steps assumes it is already open 
             return prediction
 
         if self.serialized:
@@ -822,6 +824,10 @@ class BackpropagatingAPTest(Test):
         else:
             pool = multiprocessing.Pool(1, maxtasksperchild = 1)
             traces = pool.apply(self.cclamp, args = (model, amplitude, delay, duration, "soma", 0.5, dend_locations))
+
+        if self.logFile is None:
+            self.logFile = open(filepath, 'w') #if not opened means that the amplitude wasn't None so, open it now
+
 
         # filepath = self.path_results + self.test_log_filename
         # self.logFile = open(filepath, 'w') # if it is opened before multiprocessing, the multiporeccing won't work under python3
@@ -921,7 +927,7 @@ class BackpropagatingAPTest(Test):
         if self.show_plot:
             plt.show()
 
-        # if BackpropagatingAPTest.score_type.strong:#score_avg[0] < score_avg[1]:
+        # if scores.ZScore_backpropagatingAP.strong:#score_avg[0] < score_avg[1]:
         #     best_score = score_avg[0]
         #     print('This is a rather STRONG propagating model')
 
@@ -930,7 +936,7 @@ class BackpropagatingAPTest(Test):
         #     self.logFile.write("---------------------------------------------------------------------------------------------------\n")
 
         #     score_json= {'Z_score_avg_STRONG_propagating' : best_score}
-        # elif BackpropagatingAPTest.score_type.strong is False:#score_avg[1] < score_avg[0]:
+        # elif scores.ZScore_backpropagatingAP.strong is False:#score_avg[1] < score_avg[0]:
         #     best_score = score_avg[1]
         #     print('This is a rather WEAK propagating model')
 
@@ -938,9 +944,10 @@ class BackpropagatingAPTest(Test):
         #     self.logFile.write("---------------------------------------------------------------------------------------------------\n")
 
         #     score_json= {'Z_score_avg_Weak_propagating' : best_score}
-        # elif BackpropagatingAPTest.score_type.strong is None:#score_avg[1] == score_avg[0]:
+        # elif scores.ZScore_backpropagatingAP.strong is None:#score_avg[1] == score_avg[0]:
         #     best_score = score_avg[0]
         #     score_json= {'Z_score_avg' : best_score}
+
         try:
             if score_avg[0] < score_avg[1]:
                 best_score = score_avg[0]

@@ -32,8 +32,7 @@ class ZScore_backpropagatingAP(Score):
         """Computes average of z-scores from observation and prediction for back-propagating AP amplitudes"""
 
         errors = collections.OrderedDict()
-        if not prediction:
-            
+        if not prediction: #TODO: Early return doesn't give the chance to set the score type if it is strong or weak               
             return [ZScore_backpropagatingAP.never_fired_penalty, ZScore_backpropagatingAP.never_fired_penalty], errors
 
         for i in range (0, len(distances)):
@@ -99,7 +98,7 @@ class ZScore_backpropagatingAP(Score):
         score_avg_strong_propagating = numpy.nanmean(score_strong_propagating)
 
 
-        if score_avg_weak_propagating < score_avg_strong_propagating:
+        if score_avg_weak_propagating < score_avg_strong_propagating: #TODO: does not get here if penalty is returned at the beginning
             cls.strong = False
         elif score_avg_weak_propagating > score_avg_strong_propagating:
             cls.strong = True
